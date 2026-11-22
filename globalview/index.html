@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Global View</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" />
+  <style>
+    :root {
+      --bg: #05070d;
+      --panel: rgba(13, 17, 28, 0.82);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf4;
+      --muted: #8a93a6;
+      --accent: #f6b73c;
+      --radius: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+
+    #map {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(1px 1px at 12% 22%, #fff8 50%, transparent 51%),
+        radial-gradient(1px 1px at 72% 12%, #fff6 50%, transparent 51%),
+        radial-gradient(1px 1px at 33% 78%, #fff5 50%, transparent 51%),
+        radial-gradient(1px 1px at 88% 64%, #fff7 50%, transparent 51%),
+        radial-gradient(1px 1px at 52% 40%, #fff4 50%, transparent 51%),
+        radial-gradient(1px 1px at 8% 90%, #fff6 50%, transparent 51%),
+        radial-gradient(1.5px 1.5px at 92% 30%, #fff8 50%, transparent 51%),
+        radial-gradient(ellipse at 50% 50%, #0d1a33 0%, #05070d 70%);
+    }
+
+    .glass {
+      background: var(--panel); border: 1px solid var(--panel-border);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-radius: var(--radius); box-shadow: 0 10px 40px rgba(0,0,0,.45);
+    }
+
+    /* ---------- side panel ---------- */
+    #panel {
+      position: absolute; top: 16px; left: 16px; bottom: 104px; width: 320px;
+      display: flex; flex-direction: column; overflow: hidden; z-index: 2;
+    }
+    #panel header { padding: 16px 16px 10px; }
+    #panel h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+    #source { margin-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .pill { padding: 2px 8px; border-radius: 99px; background: rgba(246,183,60,.15); color: var(--accent); font-weight: 600; }
+
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 6px 16px 12px; }
+    .stat { background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 10px; }
+    .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+    .stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+
+    .section-title { padding: 6px 16px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+
+    #legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;
+      padding: 4px 9px; border-radius: 99px; border: 1px solid var(--panel-border);
+      background: rgba(255,255,255,.04); color: var(--text); user-select: none;
+    }
+    .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .chip.off { opacity: .35; }
+
+    #places { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .place {
+      display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px;
+      cursor: pointer; font-size: 13px;
+    }
+    .place:hover { background: rgba(255,255,255,.06); }
+    .place .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; box-shadow: 0 0 8px var(--accent); }
+    .place .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .place .meta { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+    /* ---------- top-right tools ---------- */
+    #tools { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 2; flex-wrap: wrap; justify-content: flex-end; }
+    button, select {
+      font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
+      border: 1px solid var(--panel-border); border-radius: 10px; padding: 8px 12px; cursor: pointer;
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    }
+    button:hover, select:hover { border-color: rgba(255,255,255,.25); }
+    button.primary { background: var(--accent); color: #1a1205; border-color: transparent; font-weight: 600; }
+
+    /* ---------- playback bar ---------- */
+    #playbar {
+      position: absolute; left: 352px; right: 16px; bottom: 16px; z-index: 2;
+      display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    }
+    #play { width: 44px; height: 44px; border-radius: 50%; padding: 0; font-size: 16px; flex: none; }
+    #scrubWrap { flex: 1; min-width: 0; }
+    #now { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-bottom: 6px; }
+    #nowText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #nowDate { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #scrub { width: 100%; accent-color: var(--accent); }
+    #speed { flex: none; }
+
+    /* ---------- drop overlay ---------- */
+    #drop {
+      position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
+      background: rgba(5,7,13,.75); border: 3px dashed var(--accent); font-size: 20px;
+    }
+    #drop.show { display: flex; }
+    #toast {
+      position: fixed; top: 70px; right: 16px; z-index: 11; padding: 10px 14px; font-size: 13px;
+      max-width: 360px; display: none;
+    }
+    #toast.show { display: block; }
+
+    /* ---------- popups ---------- */
+    .maplibregl-popup-content { background: #111726; color: var(--text); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+    .maplibregl-popup-tip { border-top-color: #111726 !important; border-bottom-color: #111726 !important; }
+    .maplibregl-popup-close-button { color: var(--muted); }
+    .pop h3 { margin: 0 0 4px; font-size: 14px; }
+    .pop div { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .maplibregl-ctrl-attrib { background: rgba(0,0,0,.4) !important; color: #aaa; }
+    .maplibregl-ctrl-attrib a { color: #ccc !important; }
+
+    #panelToggle { display: none; }
+
+    @media (max-width: 760px) {
+      #panel { top: 64px; left: 16px; right: 16px; width: auto; bottom: auto; max-height: 52vh; display: none; }
+      #panel.open { display: flex; }
+      #panelToggle { display: inline-block; }
+      #tools { left: 16px; justify-content: flex-start; }
+      #playbar { left: 16px; right: 16px; gap: 10px; padding: 10px 12px; }
+      #speed { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <aside id="panel" class="glass">
+    <header>
+      <h1>My Journey</h1>
+      <div id="source"></div>
+    </header>
+    <div class="stats">
+      <div class="stat"><b id="sPlaces">–</b><span>Places</span></div>
+      <div class="stat"><b id="sDist">–</b><span>Kilometres</span></div>
+      <div class="stat"><b id="sTrips">–</b><span>Trips</span></div>
+      <div class="stat"><b id="sDays">–</b><span>Days</span></div>
+    </div>
+    <div class="section-title">Travel modes</div>
+    <div id="legend"></div>
+    <div class="section-title">Places, in order of first visit</div>
+    <div id="places"></div>
+  </aside>
+
+  <div id="tools">
+    <button id="panelToggle">☰ Journey</button>
+    <select id="style" title="Map style">
+      <option value="dark">Dark</option>
+      <option value="liberty">Streets</option>
+      <option value="positron">Light</option>
+      <option value="night">Night lights (NASA)</option>
+      <option value="bluemarble">Blue Marble (NASA)</option>
+    </select>
+    <button id="fit">Show all</button>
+    <button id="load" class="primary">Load Timeline.json</button>
+    <input id="file" type="file" accept=".json,application/json" hidden />
+  </div>
+
+  <div id="playbar" class="glass">
+    <button id="play" class="primary" title="Replay journey">▶</button>
+    <div id="scrubWrap">
+      <div id="now"><span id="nowText">Press play to replay your journey</span><span id="nowDate"></span></div>
+      <input id="scrub" type="range" min="0" max="0" value="0" />
+    </div>
+    <select id="speed" title="Replay speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+      <option value="8">8×</option>
+    </select>
+  </div>
+
+  <div id="drop">Drop your Timeline.json here</div>
+  <div id="toast" class="glass"></div>
+
+  <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+  <script src="sample-data.js"></script>
+  <script src="timeline-parser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
