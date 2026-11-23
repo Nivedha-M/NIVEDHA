@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spending dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+:root{--bg:#f7f6f3;--panel:#fff;--fg:#1f1e1c;--muted:#6f6c66;--line:#e6e3dc;--grid:#eeebe5;--pop:#fff;--shadow:0 6px 24px rgba(0,0,0,.12)}
+@media (prefers-color-scheme:dark){:root{--bg:#191917;--panel:#232321;--fg:#ecebe7;--muted:#a3a09a;--line:#383733;--grid:#2e2d2a;--pop:#2c2b29;--shadow:0 6px 24px rgba(0,0,0,.5)}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.sp{max-width:1180px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:22px}
+h1{font:400 34px/1.15 Georgia,"Times New Roman",serif;margin:0}
+.lede{font-size:18px;margin:10px 0 0;max-width:64ch}.lede b{font-weight:600}
+.sub{color:var(--muted);font-size:13px;margin:6px 0 0}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;position:sticky;top:8px;z-index:10}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.chip:hover{border-color:var(--muted)}.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.field input[type=date]{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 6px;color-scheme:light dark}
+.field input[type=checkbox]{width:15px;height:15px;accent-color:var(--fg)}
+.reset{font:inherit;font-size:13px;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;margin-left:auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;position:relative;overflow:hidden;min-width:0;container-type:inline-size}
+.kpi{padding-left:24px}.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--accent)}
+.kl{font-size:13px;color:var(--muted)}.kv{font:400 30px/1.15 Georgia,serif;margin-top:6px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.kv.word{font-size:22px}
+.kn{font-size:13px;color:var(--muted);margin-top:4px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:16px}
+h2{font-size:18px;font-weight:600;margin:0}.hint{color:var(--muted);font-size:13px;margin:4px 0 12px}
+.chart{position:relative}.chart svg{display:block;overflow:visible}.chart text{fill:var(--fg);font-family:inherit}
+.axis text,.chart .tick-l{fill:var(--muted);font-size:12px}.axis path,.axis line{stroke:var(--line)}.gridl line{stroke:var(--grid)}.gridl path{display:none}
+.mlabel{font-size:14px;font-weight:600}.chart .msub{fill:var(--muted);font-size:11px}.mtotal{font-size:13px;font-weight:600}
+.hit{fill:transparent;cursor:pointer}.empty{color:var(--muted);padding:18px 0;margin:0}
+.tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--pop);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:9px;padding:8px 10px;font-size:13px;line-height:1.5;min-width:160px;max-width:290px;z-index:20;opacity:0;transition:opacity .15s}
+.tip .th{font-weight:600;display:flex;justify-content:space-between;gap:12px;margin-bottom:2px}.tip .tr{display:flex;justify-content:space-between;gap:12px}.tip .tm{color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;flex:none;vertical-align:baseline}
+.keys{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}.keys li{display:flex;align-items:center}
+.donutwrap{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+@container (max-width:460px){.donutwrap{grid-template-columns:1fr;justify-items:center}.legend{width:100%}}
+.dc1{font:400 22px Georgia,serif}.chart .dc2{fill:var(--muted);font-size:12px}
+.legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.legend button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;width:100%;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:14px}
+.legend button:hover,.legend button:focus-visible,.legend button[aria-pressed="true"]{background:var(--bg)}
+.legend button[aria-pressed="true"]{outline:1px solid var(--line)}
+.lshare{color:var(--muted);font-size:12px}.lamt{text-align:right;min-width:76px;font-variant-numeric:tabular-nums}
+.tablewrap{overflow:auto;max-height:460px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.small{display:block;color:var(--muted);font-size:12px}
+.cat{display:inline-flex;align-items:center;white-space:nowrap;font-size:12px;padding:2px 8px 2px 6px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}.cat .dot{width:8px;height:8px;margin-right:5px}
+.caption{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.linkbtn{font:inherit;background:none;border:0;padding:0;color:var(--fg);text-decoration:underline;cursor:pointer}
+details summary{cursor:pointer;font-weight:600}details ul{color:var(--muted);line-height:1.6;padding-left:1.2em}
+@media (prefers-reduced-motion:reduce){.tip{transition:none}}
+@media print{.filters{position:static}.tablewrap{max-height:none}}
+</style>
+</head>
+<body>
+<div class="sp">
+  <header>
+    <h1>Where the money went</h1>
+    <p class="lede" id="lede"></p>
+    <p class="sub" id="sources"></p>
+  </header>
+
+  <div class="filters">
+    <div class="chips" id="presets" role="group" aria-label="Quick date ranges"></div>
+    <div class="chips" id="accounts" role="group" aria-label="Account"></div>
+    <label class="field">From <input type="date" id="start"></label>
+    <label class="field">To <input type="date" id="end"></label>
+    <label class="field" id="family-field"><input type="checkbox" id="family"> <span id="familyLabel"></span></label>
+    <button class="reset" id="reset" type="button">Reset</button>
+  </div>
+
+  <section class="kpis">
+    <div class="card kpi" style="--accent:#F97316"><div class="kl">Total spent</div><div class="kv" id="k-spent">—</div><div class="kn" id="k-payments"></div></div>
+    <div class="card kpi" style="--accent:#3B82F6"><div class="kl">Average per day</div><div class="kv" id="k-perday">—</div><div class="kn" id="k-days"></div></div>
+    <div class="card kpi" style="--accent:#EC4899"><div class="kl">Biggest category</div><div class="kv word" id="k-top">—</div><div class="kn" id="k-topamt"></div></div>
+    <div class="card kpi" style="--accent:#22C55E"><div class="kl">Largest single payment</div><div class="kv" id="k-largest">—</div><div class="kn" id="k-largest-to"></div></div>
+    <div class="card kpi" id="kpi-family" style="--accent:#A8A29E"><div class="kl" id="k-family-label"></div><div class="kv" id="k-family">—</div><div class="kn" id="k-family-note"></div></div>
+    <div class="card kpi" style="--accent:#14B8A6"><div class="kl">Money received</div><div class="kv" id="k-in">—</div><div class="kn">not counting your own accounts</div></div>
+  </section>
+
+  <div class="row">
+    <section class="card">
+      <h2>Each month, by category</h2>
+      <p class="hint">Point at a colour to see the amount.</p>
+      <div class="chart" id="monthly"></div>
+      <ul class="keys" id="keys"></ul>
+    </section>
+    <section class="card">
+      <h2>Where it went</h2>
+      <p class="hint">Tap a category to filter the payments list below.</p>
+      <div class="chart donutwrap" id="categories"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Week by week</h2>
+    <p class="hint">Weeks run Monday to Sunday. Point at a week for its breakdown.</p>
+    <div class="chart" id="weekly" style="min-height:240px"></div>
+    <div class="tablewrap" style="max-height:none">
+      <table><thead><tr><th>Week</th><th class="num">Spent (₹)</th><th class="num">Payments</th><th>Biggest category</th></tr></thead><tbody id="weekly-rows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Day by day</h2>
+    <p class="hint">Each bar takes the colour of that day’s biggest category. Point at a day to see who you paid.</p>
+    <div class="chips" style="margin-bottom:8px" role="group" aria-label="Bar scale">
+      <button class="chip" data-scale="actual" aria-pressed="true" type="button">True scale</button>
+      <button class="chip" data-scale="squash" aria-pressed="false" type="button">Squash big days</button>
+    </div>
+    <div class="chart" id="daily" style="min-height:220px"></div>
+  </section>
+
+  <section class="card">
+    <h2>Payments</h2>
+    <div class="caption" id="tx-caption"></div>
+    <div class="tablewrap">
+      <table><thead><tr><th>Date</th><th>Paid to</th><th>Category</th><th>Account</th><th class="num">Amount (₹)</th></tr></thead><tbody id="tx-rows"></tbody></table>
+    </div>
+  </section>
+
+  <details>
+    <summary>How this works</summary>
+    <ul>
+      <li>Built from the statement files listed at the top. Run the script again after adding or replacing files to refresh it.</li>
+      <li>Categories come from the payee’s name and the note on each UPI payment. Add your own rules in my_categories.csv.</li>
+      <li>Money moved between your own accounts is never counted, so nothing is counted twice.</li>
+      <li>Payments to family are shown separately and only counted when you tick the box at the top.</li>
+      <li>Cash withdrawals count as spending, since what the cash bought isn’t known.</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+const DATA = [{"date": "2026-09-01", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 500.0, "txn_id": "953a0231de"}, {"date": "2026-09-01", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 40.0, "txn_id": "e2b35a6631"}, {"date": "2026-09-01", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "7f32b2ece6"}, {"date": "2026-09-01", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 279.0, "txn_id": "ac30517d1e"}, {"date": "2026-09-02", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 396.0, "txn_id": "c9a48d2c3d"}, {"date": "2026-09-02", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 40.0, "txn_id": "32d92bf4ee"}, {"date": "2026-09-02", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 617.0, "txn_id": "c3a31348e1"}, {"date": "2026-09-03", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "bb769dd819"}, {"date": "2026-09-04", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 453.0, "txn_id": "2d1e73684f"}, {"date": "2026-09-04", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "6574df446e"}, {"date": "2026-09-04", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "a4cdf49c2d"}, {"date": "2026-09-05", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 509.0, "txn_id": "6b9c354db3"}, {"date": "2026-09-05", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "6ee47fd29c"}, {"date": "2026-09-05", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 206.0, "txn_id": "d4bea8a834"}, {"date": "2026-09-06", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 620.0, "txn_id": "67fae8d582"}, {"date": "2026-09-07", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "1f1e2ab62f"}, {"date": "2026-09-07", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "0ff05a2509"}, {"date": "2026-09-08", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "000327ce6c"}, {"date": "2026-09-08", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 235.0, "txn_id": "82f42252fa"}, {"date": "2026-09-08", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "1e4c1b57c1"}, {"date": "2026-09-09", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 481.0, "txn_id": "2e34735fa9"}, {"date": "2026-09-09", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 896.0, "txn_id": "ec38a36bc2"}, {"date": "2026-09-09", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 88.0, "txn_id": "c855bff36a"}, {"date": "2026-09-09", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 302.0, "txn_id": "2d2e839f72"}, {"date": "2026-09-10", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 691.0, "txn_id": "5136fde848"}, {"date": "2026-09-10", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "55b55c466b"}, {"date": "2026-09-10", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 532.0, "txn_id": "f9e7ec7623"}, {"date": "2026-09-11", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 593.0, "txn_id": "d6d958da43"}, {"date": "2026-09-11", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 265.0, "txn_id": "672b409ccb"}, {"date": "2026-09-12", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "5e92f58cb8"}, {"date": "2026-09-13", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 525.0, "txn_id": "540b7d25d6"}, {"date": "2026-09-13", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 374.0, "txn_id": "9cf930558e"}, {"date": "2026-09-14", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 414.0, "txn_id": "8e1cc9a697"}, {"date": "2026-09-14", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 886.0, "txn_id": "2631d5ea61"}, {"date": "2026-09-14", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 419.0, "txn_id": "0f5296da0d"}, {"date": "2026-09-15", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 184.0, "txn_id": "2e0f440087"}, {"date": "2026-09-15", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 147.0, "txn_id": "c61cad48b4"}, {"date": "2026-09-15", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "7466d84bec"}, {"date": "2026-09-16", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "3d2b1ba659"}, {"date": "2026-09-16", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 383.0, "txn_id": "abc2fbddda"}, {"date": "2026-09-16", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "d543000d5d"}, {"date": "2026-09-17", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 587.0, "txn_id": "280fbbf35e"}, {"date": "2026-09-17", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "386bb4c2bc"}, {"date": "2026-09-17", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "04f40f9c20"}, {"date": "2026-09-18", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "69dc370dea"}, {"date": "2026-09-19", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 359.0, "txn_id": "49a527fec2"}, {"date": "2026-09-19", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 251.0, "txn_id": "f969157e34"}, {"date": "2026-09-20", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 403.0, "txn_id": "ff6446d608"}, {"date": "2026-09-20", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 451.0, "txn_id": "c23bd1c7f3"}, {"date": "2026-09-20", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 419.0, "txn_id": "f1e67042f7"}, {"date": "2026-09-21", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "d9ef88a9e7"}, {"date": "2026-09-22", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 540.0, "txn_id": "771a4d406a"}, {"date": "2026-09-23", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "8295751d3f"}, {"date": "2026-09-24", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "324293e69c"}, {"date": "2026-09-24", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "60a4bdccc3"}, {"date": "2026-09-25", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 321.0, "txn_id": "875055d10b"}, {"date": "2026-09-25", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 153.0, "txn_id": "29bac7478a"}, {"date": "2026-09-25", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "6fa336f9e0"}, {"date": "2026-09-26", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 606.0, "txn_id": "cd15386a65"}, {"date": "2026-09-27", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 403.0, "txn_id": "50d41e3751"}, {"date": "2026-09-28", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 412.0, "txn_id": "09cf5b78aa"}, {"date": "2026-09-29", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "d162f9e649"}, {"date": "2026-09-29", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "6453206da6"}, {"date": "2026-09-30", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 474.0, "txn_id": "10635ba44c"}, {"date": "2026-09-30", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "fa98dd3c21"}, {"date": "2026-09-30", "time": "", "account": "SBI", "payee": "Ramesh K", "remark": "Friend split", "category": "People & other", "direction": "out", "amount": 638.0, "txn_id": "06bae419bf"}, {"date": "2026-10-01", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 599.0, "txn_id": "263a45c814"}, {"date": "2026-10-01", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "3d65d0b825"}, {"date": "2026-10-01", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 900.0, "txn_id": "b3c8f1548d"}, {"date": "2026-10-01", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "1f19fff782"}, {"date": "2026-10-01", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 493.0, "txn_id": "a73fdb314d"}, {"date": "2026-10-02", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "2344281b2b"}, {"date": "2026-10-03", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "78e844964c"}, {"date": "2026-10-04", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 318.0, "txn_id": "ca2f49f633"}, {"date": "2026-10-04", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "9c471969ee"}, {"date": "2026-10-04", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 407.0, "txn_id": "5c20096d45"}, {"date": "2026-10-05", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 244.0, "txn_id": "f3677f4e28"}, {"date": "2026-10-05", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "01ebd21159"}, {"date": "2026-10-05", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 453.0, "txn_id": "0175bd888f"}, {"date": "2026-10-06", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 475.0, "txn_id": "4f89ccec07"}, {"date": "2026-10-06", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "83241aa4ba"}, {"date": "2026-10-06", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 371.0, "txn_id": "5900177fbb"}, {"date": "2026-10-06", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "2f69e85e9b"}, {"date": "2026-10-07", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 466.0, "txn_id": "1e92e1f7bf"}, {"date": "2026-10-07", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "b6fcdc0557"}, {"date": "2026-10-07", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "86a87ebf91"}, {"date": "2026-10-08", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 245.0, "txn_id": "b2afc42068"}, {"date": "2026-10-08", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "37d32a218a"}, {"date": "2026-10-08", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 317.0, "txn_id": "49e69a17d4"}, {"date": "2026-10-09", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 221.0, "txn_id": "b9bc63e28d"}, {"date": "2026-10-09", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "49ec705074"}, {"date": "2026-10-10", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 322.0, "txn_id": "ada2a180d1"}, {"date": "2026-10-10", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 696.0, "txn_id": "a8870f5c95"}, {"date": "2026-10-11", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 575.0, "txn_id": "99c77201cb"}, {"date": "2026-10-12", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 242.0, "txn_id": "2b4bad2146"}, {"date": "2026-10-12", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 495.0, "txn_id": "8f7a561c14"}, {"date": "2026-10-12", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 103.0, "txn_id": "bfc0eb9d8d"}, {"date": "2026-10-12", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "19f6e0687f"}, {"date": "2026-10-13", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 254.0, "txn_id": "7021ac1f01"}, {"date": "2026-10-14", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 745.0, "txn_id": "36bfa93848"}, {"date": "2026-10-14", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "295229161d"}, {"date": "2026-10-14", "time": "", "account": "SBI", "payee": "Ramesh K", "remark": "Friend split", "category": "People & other", "direction": "out", "amount": 684.0, "txn_id": "f47091c0ce"}, {"date": "2026-10-15", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "169b912131"}, {"date": "2026-10-16", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 218.0, "txn_id": "2a7d4fb93e"}, {"date": "2026-10-17", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 503.0, "txn_id": "c9ed097663"}, {"date": "2026-10-17", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 40.0, "txn_id": "85d5776dd9"}, {"date": "2026-10-18", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "cac6aac212"}, {"date": "2026-10-19", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 452.0, "txn_id": "ecb22dee21"}, {"date": "2026-10-21", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 510.0, "txn_id": "a093b4709c"}, {"date": "2026-10-21", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 284.0, "txn_id": "9cbb2023e8"}, {"date": "2026-10-21", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 163.0, "txn_id": "b8afabc4d3"}, {"date": "2026-10-21", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 436.0, "txn_id": "a197b1d4a3"}, {"date": "2026-10-22", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "fe10c56172"}, {"date": "2026-10-22", "time": "", "account": "SBI", "payee": "Ramesh K", "remark": "Friend split", "category": "People & other", "direction": "out", "amount": 326.0, "txn_id": "42a8665022"}, {"date": "2026-10-23", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 524.0, "txn_id": "75182a6957"}, {"date": "2026-10-24", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 40.0, "txn_id": "98d3494d69"}, {"date": "2026-10-24", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 388.0, "txn_id": "920d8b5eb3"}, {"date": "2026-10-25", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "09e5cf573f"}, {"date": "2026-10-25", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 174.0, "txn_id": "4bf9a6d015"}, {"date": "2026-10-26", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 499.0, "txn_id": "73c1edd801"}, {"date": "2026-10-26", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 266.0, "txn_id": "efe55ab269"}, {"date": "2026-10-27", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 113.0, "txn_id": "2d5529131a"}, {"date": "2026-10-27", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "01df6b9542"}, {"date": "2026-10-28", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 494.0, "txn_id": "eec10691e6"}, {"date": "2026-10-28", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 558.0, "txn_id": "9832b8a2c6"}, {"date": "2026-10-28", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 182.0, "txn_id": "6216d38c1b"}, {"date": "2026-10-28", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "dfd34401b2"}, {"date": "2026-10-29", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "6ce20d3eed"}, {"date": "2026-10-30", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 228.0, "txn_id": "707bfe4b5b"}, {"date": "2026-10-30", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "767fd36d80"}, {"date": "2026-10-30", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "11de5b63a1"}, {"date": "2026-10-30", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 538.0, "txn_id": "7fb63b1b32"}, {"date": "2026-10-30", "time": "", "account": "SBI", "payee": "Giri Traders", "remark": "Diwali sweets", "category": "Food & Dining", "direction": "out", "amount": 2400.0, "txn_id": "9daed7368b"}, {"date": "2026-10-31", "time": "", "account": "SBI", "payee": "Sky Fireworks", "remark": "Diwali crackers", "category": "Shopping", "direction": "out", "amount": 3100.0, "txn_id": "cb0b0f264e"}, {"date": "2026-11-01", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 523.0, "txn_id": "3cf2c7bd60"}, {"date": "2026-11-01", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 259.0, "txn_id": "216420da0f"}, {"date": "2026-11-02", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 470.0, "txn_id": "4163f35598"}, {"date": "2026-11-02", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 163.0, "txn_id": "44d8f16da7"}, {"date": "2026-11-03", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 363.0, "txn_id": "c724bec5d4"}, {"date": "2026-11-03", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "c6c0ddea19"}, {"date": "2026-11-03", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "3b0ed61802"}, {"date": "2026-11-03", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 268.0, "txn_id": "cdc237398d"}, {"date": "2026-11-04", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 466.0, "txn_id": "f023d0caa3"}, {"date": "2026-11-04", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 293.0, "txn_id": "bb5533e1e8"}, {"date": "2026-11-04", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "22e4cacb4b"}, {"date": "2026-11-05", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 499.0, "txn_id": "29fadfadea"}, {"date": "2026-11-05", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 166.0, "txn_id": "7e326fb3b1"}, {"date": "2026-11-05", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "d4b0a3f8e9"}, {"date": "2026-11-06", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 281.0, "txn_id": "11a51f1cd1"}, {"date": "2026-11-06", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 327.0, "txn_id": "08e4653964"}, {"date": "2026-11-06", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "24cf918bc7"}, {"date": "2026-11-06", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "caa56fec00"}, {"date": "2026-11-07", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "04748edb38"}, {"date": "2026-11-07", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 879.0, "txn_id": "ccc796396f"}, {"date": "2026-11-08", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 223.0, "txn_id": "89b2d1820f"}, {"date": "2026-11-08", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "53332c87c8"}, {"date": "2026-11-09", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 325.0, "txn_id": "7e614e6f75"}, {"date": "2026-11-09", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "5bb88b5545"}, {"date": "2026-11-10", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 40.0, "txn_id": "26d7c66d9a"}, {"date": "2026-11-10", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "72ca220e1f"}, {"date": "2026-11-10", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 334.0, "txn_id": "ad377e67fc"}, {"date": "2026-11-11", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 882.0, "txn_id": "66d0d06014"}, {"date": "2026-11-11", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 119.0, "txn_id": "e90573df0b"}, {"date": "2026-11-11", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "26f705d10b"}, {"date": "2026-11-12", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 566.0, "txn_id": "54ee73aa3e"}, {"date": "2026-11-12", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "ab1804a0ab"}, {"date": "2026-11-13", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 508.0, "txn_id": "f8943a5c14"}, {"date": "2026-11-13", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "0e8e7a5b92"}, {"date": "2026-11-13", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 299.0, "txn_id": "21b426cfb5"}, {"date": "2026-11-14", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 246.0, "txn_id": "ebc500571b"}, {"date": "2026-11-15", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 552.0, "txn_id": "cf4894c30e"}, {"date": "2026-11-15", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 679.0, "txn_id": "538bb82387"}, {"date": "2026-11-16", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 360.0, "txn_id": "a6d0e92196"}, {"date": "2026-11-16", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 441.0, "txn_id": "1dbcb65dac"}, {"date": "2026-11-16", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 319.0, "txn_id": "97448bd6ac"}, {"date": "2026-11-16", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "b0b086078a"}, {"date": "2026-11-16", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 182.0, "txn_id": "92069f5b2f"}, {"date": "2026-11-17", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 80.0, "txn_id": "6acc3d9f26"}, {"date": "2026-11-17", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 198.0, "txn_id": "ab3c6380de"}, {"date": "2026-11-17", "time": "", "account": "SBI", "payee": "Ramesh K", "remark": "Friend split", "category": "People & other", "direction": "out", "amount": 727.0, "txn_id": "8873bfaa44"}, {"date": "2026-11-18", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 511.0, "txn_id": "c47b5ee216"}, {"date": "2026-11-18", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 298.0, "txn_id": "3bd95c553b"}, {"date": "2026-11-18", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 191.0, "txn_id": "bfc5de73a3"}, {"date": "2026-11-19", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "3c49bf1d0c"}, {"date": "2026-11-19", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "d7183a40ee"}, {"date": "2026-11-20", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 523.0, "txn_id": "41fdef3588"}, {"date": "2026-11-20", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 507.0, "txn_id": "4d09124184"}, {"date": "2026-11-23", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 544.0, "txn_id": "92dc19b2cb"}, {"date": "2026-11-23", "time": "", "account": "SBI", "payee": "Blinkit", "remark": "Groceries", "category": "Groceries", "direction": "out", "amount": 770.0, "txn_id": "ba9c66731e"}, {"date": "2026-11-23", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 115.0, "txn_id": "0e7293ce6c"}, {"date": "2026-11-23", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "b4035f779d"}, {"date": "2026-11-24", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 80.0, "txn_id": "e65fb4dc72"}, {"date": "2026-11-24", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 508.0, "txn_id": "eeef6124b1"}, {"date": "2026-11-25", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 445.0, "txn_id": "fedd1f9495"}, {"date": "2026-11-25", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 415.0, "txn_id": "b24d5535db"}, {"date": "2026-11-25", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 60.0, "txn_id": "7257fdf059"}, {"date": "2026-11-26", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Biryani", "category": "Food & Dining", "direction": "out", "amount": 267.0, "txn_id": "a39acadfe8"}, {"date": "2026-11-26", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 50.0, "txn_id": "0958667a8f"}, {"date": "2026-11-26", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 455.0, "txn_id": "dc0f67d5db"}, {"date": "2026-11-27", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "9130a038f9"}, {"date": "2026-11-27", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 120.0, "txn_id": "692134cab7"}, {"date": "2026-11-27", "time": "", "account": "SBI", "payee": "Chennai Metro Rail", "remark": "Metro card", "category": "Transport", "direction": "out", "amount": 60.0, "txn_id": "290ac8de3c"}, {"date": "2026-11-27", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 233.0, "txn_id": "d52754bffe"}, {"date": "2026-11-28", "time": "", "account": "SBI", "payee": "Swiggy", "remark": "Lunch", "category": "Food & Dining", "direction": "out", "amount": 410.0, "txn_id": "5c3c914bfb"}, {"date": "2026-11-28", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 301.0, "txn_id": "c09e396c6a"}, {"date": "2026-11-28", "time": "", "account": "SBI", "payee": "Filter Coffee Corner", "remark": "Coffee", "category": "Food & Dining", "direction": "out", "amount": 120.0, "txn_id": "e2cd4bae54"}, {"date": "2026-11-28", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 415.0, "txn_id": "84f961ba54"}, {"date": "2026-11-29", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 756.0, "txn_id": "1af0d7dad7"}, {"date": "2026-11-29", "time": "", "account": "SBI", "payee": "Sri Lakshmi Vegetables", "remark": "Vegetables", "category": "Groceries", "direction": "out", "amount": 107.0, "txn_id": "4c60837e6e"}, {"date": "2026-11-30", "time": "", "account": "SBI", "payee": "Zomato", "remark": "Dinner", "category": "Food & Dining", "direction": "out", "amount": 711.0, "txn_id": "6b5aef4a1c"}, {"date": "2026-11-30", "time": "", "account": "SBI", "payee": "Uber India", "remark": "Cab ride", "category": "Transport", "direction": "out", "amount": 361.0, "txn_id": "fe09f268da"}];
+const META = {"generated": "23 Nov 2026, 10:44 PM", "sources": [{"file": "sbi_5678_sample_statement.xlsx", "account": "SBI", "rows": 211, "first": "2026-09-01", "last": "2026-11-30"}], "family": "Transfers to Arun"};
+(() => {
+  const PALETTE = {
+    'Food & Dining': '#F97316', 'Groceries': '#22C55E', 'Transport': '#3B82F6', 'Shopping': '#EC4899',
+    'Home & Household': '#8B5CF6', 'Rent': '#14B8A6', 'Health & Care': '#EF4444', 'Subscriptions & Recharges': '#EAB308',
+    'Entertainment': '#06B6D4', 'Services': '#B45309', 'Loans & EMI': '#0F766E', 'Cash withdrawals': '#64748B', 'People & other': '#84CC16'
+  };
+  PALETTE[META.family] = '#A8A29E';
+  const EXTRA = ['#F43F5E', '#0EA5E9', '#D946EF', '#65A30D', '#FB923C', '#2DD4BF', '#A78BFA'];
+  DATA.forEach((r) => { r.amount = +r.amount; if (!PALETTE[r.category] && r.category !== 'Between own accounts' && r.category !== 'Money in') PALETTE[r.category] = EXTRA[Object.keys(PALETTE).length % EXTRA.length]; });
+  const CATS = Object.keys(PALETTE);
+  const color = (c) => PALETTE[c] || '#9CA3AF';
+  const inr = new Intl.NumberFormat('en-IN', {maximumFractionDigits: 0});
+  const inr2 = new Intl.NumberFormat('en-IN', {maximumFractionDigits: 2});
+  const fmt = (v) => inr.format(Math.round(+v || 0));
+  const rs = (v) => '₹' + fmt(v);
+  const short = (v) => v >= 100000 ? '₹' + d3.format('.3~')(v / 100000) + 'L' : v >= 1000 ? '₹' + d3.format('.3~')(v / 1000) + 'k' : rs(v);
+  const parse = d3.utcParse('%Y-%m-%d'), iso = d3.utcFormat('%Y-%m-%d');
+  const dFmt = d3.utcFormat('%-d %b'), dayFmt = d3.utcFormat('%a %-d %b');
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const dot = (c) => { const s = el('span', 'dot'); s.style.background = color(c); return s; };
+  const chip = (c, label) => { const s = el('span', 'cat'); s.append(dot(c), document.createTextNode(label || c)); return s; };
+
+  const dates = DATA.map((r) => r.date).sort();
+  const MIN = dates[0], MAX = dates[dates.length - 1];
+  const ACCOUNTS = [...new Set(DATA.map((r) => r.account))];
+  const DEFAULTS = {start: MIN, end: MAX, acct: '', family: false, cat: '', squash: false};
+  const S = {...DEFAULTS};
+
+  // ---------- header text that doesn't change
+  $('sources').textContent = META.sources.map((s) => `${s.account}: ${dFmt(parse(s.first))} – ${dFmt(parse(s.last))} ${s.last.slice(0, 4)}`).join(' · ')
+    + ` · Built ${META.generated}. Amounts in ₹.`;
+  $('familyLabel').textContent = 'Count ' + META.family.charAt(0).toLowerCase() + META.family.slice(1);
+  $('k-family-label').textContent = META.family;
+  if (!DATA.some((r) => r.category === META.family)) { $('kpi-family').hidden = true; $('family-field').hidden = true; }
+  const PRESENT = new Set(DATA.map((r) => r.category));
+  CATS.filter((c) => PRESENT.has(c)).forEach((c) => { const li = el('li'); li.append(dot(c), document.createTextNode(c)); $('keys').appendChild(li); });
+
+  // ---------- presets: whole period, each month, last 14 / 7 days
+  const presets = [['All dates', MIN, MAX]];
+  d3.utcMonths(d3.utcMonth.floor(parse(MIN)), d3.utcDay.offset(parse(MAX), 1)).forEach((m) => {
+    const a = iso(m), b = iso(d3.utcDay.offset(d3.utcMonth.offset(m, 1), -1));
+    presets.push([d3.utcFormat('%B %Y')(m), a < MIN ? MIN : a, b > MAX ? MAX : b]);
+  });
+  presets.push(['Last 14 days', iso(d3.utcDay.offset(parse(MAX), -13)), MAX], ['Last 7 days', iso(d3.utcDay.offset(parse(MAX), -6)), MAX]);
+  presets.forEach(([label, a, b]) => {
+    const btn = el('button', 'chip', label); btn.type = 'button';
+    btn.dataset.a = a < MIN ? MIN : a; btn.dataset.b = b;
+    btn.onclick = () => set({start: btn.dataset.a, end: btn.dataset.b});
+    $('presets').appendChild(btn);
+  });
+  [['All accounts', ''], ...ACCOUNTS.map((a) => [a, a])].forEach(([label, v]) => {
+    const btn = el('button', 'chip', label); btn.type = 'button'; btn.dataset.v = v;
+    btn.onclick = () => set({acct: v});
+    $('accounts').appendChild(btn);
+  });
+  ['start', 'end'].forEach((k) => {
+    const inp = $(k); inp.min = MIN; inp.max = MAX;
+    inp.addEventListener('change', () => {
+      if (!(inp.value && inp.validity.valid)) return;
+      let {start, end} = S; if (k === 'start') start = inp.value; else end = inp.value;
+      if (start > end) { if (k === 'start') end = start; else start = end; }
+      set({start, end});
+    });
+    inp.addEventListener('blur', () => { inp.value = S[k]; });
+  });
+  $('family').onchange = (e) => set({family: e.target.checked});
+  $('reset').onclick = () => set({...DEFAULTS});
+  document.querySelectorAll('[data-scale]').forEach((b) => b.onclick = () => set({squash: b.dataset.scale === 'squash'}));
+
+  function set(patch) { Object.assign(S, patch); render(); }
+
+  // ---------- numbers
+  function compute() {
+    const inRange = DATA.filter((r) => r.date >= S.start && r.date <= S.end && (!S.acct || r.account === S.acct));
+    const spending = inRange.filter((r) => r.direction === 'out' && r.category !== 'Between own accounts' && (S.family || r.category !== META.family));
+    const total = d3.sum(spending, (r) => r.amount);
+    const byCat = d3.rollups(spending, (v) => ({amount: d3.sum(v, (r) => r.amount), payments: v.length}), (r) => r.category)
+      .map(([category, v]) => ({category, ...v, share: total ? Math.round(v.amount / total * 1000) / 10 : 0})).sort((a, b) => b.amount - a.amount);
+    const days = Math.round((Date.parse(S.end) - Date.parse(S.start)) / 864e5) + 1;
+    const biggest = spending.slice().sort((a, b) => b.amount - a.amount)[0];
+    const byMonth = d3.rollups(spending, (v) => d3.sum(v, (r) => r.amount), (r) => r.date.slice(0, 7), (r) => r.category)
+      .flatMap(([month, cs]) => cs.map(([category, amount]) => ({month, category, amount}))).sort((a, b) => a.month.localeCompare(b.month));
+    const s = parse(S.start), e = parse(S.end);
+    const weekly = d3.utcMonday.range(d3.utcMonday.floor(s), d3.utcDay.offset(e, 1)).map((w) => {
+      const ws = iso(w), we = iso(d3.utcDay.offset(w, 6));
+      const rows = spending.filter((r) => r.date >= ws && r.date <= we);
+      const cats = d3.rollups(rows, (v) => d3.sum(v, (r) => r.amount), (r) => r.category).sort((a, b) => b[1] - a[1]);
+      return {week: ws, from: ws < S.start ? S.start : ws, to: we > S.end ? S.end : we, amount: d3.sum(rows, (r) => r.amount), payments: rows.length,
+              top: cats.length ? cats[0][0] : '', cats: cats.map(([category, amount]) => ({category, amount}))};
+    });
+    const daily = d3.utcDay.range(s, d3.utcDay.offset(e, 1)).map((d) => {
+      const date = iso(d); const rows = spending.filter((r) => r.date === date);
+      const cats = d3.rollups(rows, (v) => d3.sum(v, (r) => r.amount), (r) => r.category).sort((a, b) => b[1] - a[1]);
+      return {date, amount: d3.sum(rows, (r) => r.amount), top: cats.length ? cats[0][0] : '', rows: rows.sort((a, b) => b.amount - a.amount)};
+    });
+    return {
+      spending, byCat, byMonth, weekly, daily, total, days, biggest,
+      moneyIn: d3.sum(inRange.filter((r) => r.direction === 'in' && r.category !== 'Between own accounts'), (r) => r.amount),
+      family: d3.sum(inRange.filter((r) => r.direction === 'out' && r.category === META.family), (r) => r.amount)
+    };
+  }
+
+  // ---------- tooltip
+  function tip(host) {
+    const t = el('div', 'tip'); host.appendChild(t);
+    return {
+      show(ev, lines) {
+        t.replaceChildren();
+        lines.forEach(([cls, text, c, right]) => {
+          const d = el('div', cls); const l = el('span'); if (c) l.appendChild(dot(c)); l.append(document.createTextNode(text)); d.appendChild(l);
+          if (right != null) d.appendChild(el('span', null, right)); t.appendChild(d);
+        });
+        t.style.opacity = 1;
+        const r = host.getBoundingClientRect(), w = t.offsetWidth, h = t.offsetHeight;
+        let x = ev.clientX - r.left + 14, y = ev.clientY - r.top + 14;
+        if (x + w > r.width) x = Math.max(0, ev.clientX - r.left - w - 14);
+        if (y + h > r.height + 30) y = Math.max(-10, ev.clientY - r.top - h - 14);
+        t.style.transform = `translate(${x}px,${y}px)`;
+      },
+      hide() { t.style.opacity = 0; }
+    };
+  }
+  const empty = (host, msg) => { host.replaceChildren(el('p', 'empty', msg)); };
+  const toggleCat = (c) => set({cat: S.cat === c ? '' : c});
+
+  // ---------- drawings
+  function drawMonthly(C) {
+    const host = $('monthly'); host.replaceChildren();
+    if (!C.byMonth.length) return empty(host, 'No spending in these dates.');
+    const months = [...new Set(C.byMonth.map((r) => r.month))].sort();
+    const totals = new Map(months.map((m) => [m, d3.sum(C.byMonth.filter((r) => r.month === m), (r) => r.amount)]));
+    const W = Math.max(280, host.clientWidth), rowH = 36, gap = 22, labelW = 84, endW = 84, H = months.length * (rowH + gap);
+    const svg = d3.select(host).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Spending each month by category');
+    const x = d3.scaleLinear().domain([0, d3.max(totals.values()) || 1]).range([0, Math.max(40, W - labelW - endW)]);
+    const t = tip(host);
+    months.forEach((m, i) => {
+      const md = parse(m + '-01'), first = m + '-01', last = iso(d3.utcDay.offset(d3.utcMonth.offset(md, 1), -1));
+      const g = svg.append('g').attr('transform', `translate(0,${i * (rowH + gap) + gap / 2})`);
+      g.append('text').attr('class', 'mlabel').attr('y', rowH / 2 - 7).attr('dy', '.35em').text(d3.utcFormat('%b %Y')(md));
+      g.append('text').attr('class', 'msub').attr('y', rowH / 2 + 10).attr('dy', '.35em').text(`${dFmt(parse(S.start > first ? S.start : first))} – ${dFmt(parse(S.end < last ? S.end : last))}`);
+      let acc = 0;
+      C.byMonth.filter((r) => r.month === m).sort((a, b) => CATS.indexOf(a.category) - CATS.indexOf(b.category)).forEach((r) => {
+        const x0 = x(acc); acc += r.amount;
+        g.append('rect').attr('x', labelW + x0).attr('width', Math.max(0.8, x(acc) - x0 - 2)).attr('height', rowH).attr('rx', 5).style('fill', color(r.category)).style('cursor', 'pointer')
+          .on('pointermove pointerdown', (ev) => t.show(ev, [['th', r.category, r.category], ['tr', 'Spent', null, rs(r.amount)], ['tm', `${Math.round(r.amount / totals.get(m) * 100)}% of ${d3.utcFormat('%B')(md)}`]]))
+          .on('pointerleave', t.hide).on('click', () => toggleCat(r.category));
+      });
+      g.append('text').attr('class', 'mtotal').attr('x', labelW + x(acc) + 8).attr('y', rowH / 2).attr('dy', '.35em').text(rs(totals.get(m)));
+    });
+  }
+
+  function drawCategories(C) {
+    const host = $('categories'); host.replaceChildren();
+    if (!C.byCat.length) return empty(host, 'No spending in these dates.');
+    const box = el('div'); box.style.position = 'relative'; host.appendChild(box);
+    const size = 210, R = size / 2, r0 = R * 0.6;
+    const svg = d3.select(box).append('svg').attr('width', size).attr('height', size).attr('viewBox', `${-R} ${-R} ${size} ${size}`).attr('role', 'img').attr('aria-label', 'Share of spending by category');
+    const arcs = d3.pie().value((r) => r.amount).sort(null).padAngle(0.014)(C.byCat);
+    const arc = d3.arc().innerRadius(r0).outerRadius(R - 6).cornerRadius(3), arcH = d3.arc().innerRadius(r0 - 2).outerRadius(R).cornerRadius(3);
+    const c1 = svg.append('text').attr('class', 'dc1').attr('text-anchor', 'middle').attr('y', 2);
+    const c2 = svg.append('text').attr('class', 'dc2').attr('text-anchor', 'middle').attr('y', 22);
+    const t = tip(box);
+    const paths = svg.append('g').selectAll('path').data(arcs).join('path').attr('d', arc).style('fill', (a) => color(a.data.category)).style('cursor', 'pointer')
+      .style('opacity', (a) => !S.cat || S.cat === a.data.category ? 1 : 0.28);
+    const focus = (cat) => {
+      paths.attr('d', (a) => a.data.category === cat ? arcH(a) : arc(a));
+      const r = C.byCat.find((x) => x.category === cat);
+      c1.text(rs(r ? r.amount : C.total)); c2.text(r ? `${r.share}% of total` : 'total spent');
+    };
+    focus(S.cat);
+    paths.on('pointermove pointerdown', (ev, a) => { focus(a.data.category); t.show(ev, [['th', a.data.category, a.data.category], ['tr', 'Spent', null, rs(a.data.amount)], ['tr', 'Payments', null, String(a.data.payments)], ['tm', `${a.data.share}% of spending`]]); })
+      .on('pointerleave', () => { focus(S.cat); t.hide(); }).on('click', (ev, a) => toggleCat(a.data.category));
+    const ul = el('ul', 'legend');
+    C.byCat.forEach((r) => {
+      const b = el('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(S.cat === r.category));
+      b.append(dot(r.category), el('span', null, r.category), el('span', 'lshare', r.share + '%'), el('span', 'lamt', rs(r.amount)));
+      b.onmouseenter = () => focus(r.category); b.onmouseleave = () => focus(S.cat); b.onclick = () => toggleCat(r.category);
+      const li = el('li'); li.appendChild(b); ul.appendChild(li);
+    });
+    host.appendChild(ul);
+  }
+
+  function drawWeekly(C) {
+    const host = $('weekly'); host.replaceChildren();
+    const tb = $('weekly-rows'); tb.replaceChildren();
+    if (!C.weekly.length) return empty(host, 'No weeks in these dates.');
+    const W = Math.max(280, host.clientWidth), H = 240, m = {t: 24, r: 4, b: 40, l: 4};
+    const x = d3.scaleBand().domain(C.weekly.map((r) => r.week)).range([m.l, W - m.r]).padding(0.3);
+    const y = d3.scaleLinear().domain([0, d3.max(C.weekly, (r) => r.amount) || 1]).range([H - m.b, m.t]);
+    const svg = d3.select(host).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Spending each week by category');
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', H - m.b).attr('y2', H - m.b).style('stroke', 'var(--line)');
+    const t = tip(host), tight = x.bandwidth() < 70;
+    C.weekly.forEach((w) => {
+      let acc = 0; const bars = [];
+      w.cats.slice().sort((a, b) => CATS.indexOf(a.category) - CATS.indexOf(b.category)).forEach((sg, i) => {
+        const y0 = y(acc); acc += sg.amount; const y1 = y(acc);
+        bars.push(svg.append('rect').attr('x', x(w.week)).attr('width', x.bandwidth()).attr('y', y1).attr('height', Math.max(0, y0 - y1 - (i ? 1.5 : 0))).attr('rx', 3).style('fill', color(sg.category)));
+      });
+      const cx = x(w.week) + x.bandwidth() / 2;
+      svg.append('text').attr('class', 'mtotal').attr('text-anchor', 'middle').attr('x', cx).attr('y', y(w.amount) - 7).text(tight ? short(w.amount) : rs(w.amount));
+      svg.append('text').attr('class', 'tick-l').attr('text-anchor', 'middle').attr('x', cx).attr('y', H - m.b + 16).text(dFmt(parse(w.from)));
+      if (!tight) svg.append('text').attr('class', 'tick-l').attr('text-anchor', 'middle').attr('x', cx).attr('y', H - m.b + 30).text('to ' + dFmt(parse(w.to)));
+      svg.append('rect').attr('class', 'hit').attr('x', x(w.week) - x.step() * x.paddingInner() / 2).attr('width', x.step()).attr('y', 0).attr('height', H - m.b)
+        .on('pointermove pointerdown', (ev) => {
+          bars.forEach((b) => b.style('opacity', 0.85));
+          t.show(ev, [['th', `${dFmt(parse(w.from))} – ${dFmt(parse(w.to))}`, null, rs(w.amount)],
+            ...(w.cats.length ? w.cats.map((c) => ['tr', c.category, c.category, rs(c.amount)]) : [['tm', 'No spending this week']]),
+            ['tm', `${w.payments} payments`]]);
+        })
+        .on('pointerleave', () => { bars.forEach((b) => b.style('opacity', 1)); t.hide(); });
+      const tr = tb.insertRow();
+      tr.insertCell().textContent = `${dFmt(parse(w.from))} – ${dFmt(parse(w.to))}`;
+      const a = tr.insertCell(); a.className = 'num'; a.textContent = fmt(w.amount);
+      const n = tr.insertCell(); n.className = 'num'; n.textContent = w.payments;
+      const c = tr.insertCell(); if (w.top) c.appendChild(chip(w.top)); else c.textContent = '—';
+    });
+  }
+
+  function drawDaily(C) {
+    const host = $('daily'); host.replaceChildren();
+    document.querySelectorAll('[data-scale]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.scale === 'squash') === S.squash)));
+    if (!C.daily.length) return empty(host, 'No days in these dates.');
+    const W = Math.max(280, host.clientWidth), H = 220, m = {t: 12, r: 6, b: 26, l: 50};
+    const x = d3.scaleBand().domain(C.daily.map((r) => r.date)).range([m.l, W - m.r]).padding(0.22);
+    const y = (S.squash ? d3.scaleSqrt() : d3.scaleLinear()).domain([0, d3.max(C.daily, (r) => r.amount) || 1]).nice(4).range([H - m.b, m.t]);
+    const svg = d3.select(host).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Spending each day');
+    svg.append('g').attr('class', 'gridl').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(W - m.l - m.r)).tickFormat(''));
+    svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(0).tickPadding(6).tickFormat(short)).call((g) => g.select('.domain').remove());
+    const every = Math.max(1, Math.ceil(48 / x.step()));
+    svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).tickSize(0).tickPadding(8).tickValues(C.daily.map((r) => r.date).filter((_, i) => i % every === 0)).tickFormat((v) => dFmt(parse(v))));
+    const t = tip(host);
+    const bars = svg.append('g').selectAll('rect').data(C.daily).join('rect').attr('x', (r) => x(r.date)).attr('width', x.bandwidth())
+      .attr('y', (r) => y(r.amount)).attr('height', (r) => Math.max(0, y(0) - y(r.amount))).attr('rx', Math.min(3, x.bandwidth() / 3)).style('fill', (r) => r.top ? color(r.top) : 'var(--grid)');
+    svg.append('g').selectAll('rect').data(C.daily).join('rect').attr('class', 'hit').attr('x', (r) => x(r.date) - x.step() * x.paddingInner() / 2).attr('width', x.step()).attr('y', m.t).attr('height', H - m.b - m.t)
+      .on('pointermove pointerdown', (ev, r) => {
+        bars.style('opacity', (b) => b.date === r.date ? 1 : 0.45);
+        t.show(ev, [['th', dayFmt(parse(r.date)), null, rs(r.amount)],
+          ...(r.rows.length ? r.rows.slice(0, 6).map((p) => ['tr', p.remark ? `${p.payee} · ${p.remark}` : p.payee, p.category, rs(p.amount)]) : [['tm', 'No spending']]),
+          ...(r.rows.length > 6 ? [['tm', `+ ${r.rows.length - 6} more`]] : [])]);
+      })
+      .on('pointerleave', () => { bars.style('opacity', 1); t.hide(); });
+  }
+
+  function drawTable(C) {
+    const cap = $('tx-caption'); cap.replaceChildren();
+    const rows = C.spending.filter((r) => !S.cat || r.category === S.cat).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+    cap.appendChild(el('span', null, `${rows.length} payment${rows.length === 1 ? '' : 's'}, newest first`));
+    if (S.cat) { const b = el('button', 'linkbtn', 'Show all categories'); b.type = 'button'; b.onclick = () => set({cat: ''}); cap.append(chip(S.cat, S.cat + ' only'), b); }
+    const tb = $('tx-rows'); tb.replaceChildren();
+    if (!rows.length) { const td = tb.insertRow().insertCell(); td.colSpan = 5; td.className = 'small'; td.textContent = 'No payments in these dates.'; return; }
+    rows.forEach((r) => {
+      const tr = tb.insertRow();
+      const d = tr.insertCell(); d.append(document.createTextNode(dayFmt(parse(r.date)))); if (r.time) d.appendChild(el('span', 'small', r.time));
+      const p = tr.insertCell(); p.append(document.createTextNode(r.payee)); if (r.remark) p.appendChild(el('span', 'small', r.remark));
+      tr.insertCell().appendChild(chip(r.category));
+      const a = tr.insertCell(); a.className = 'small'; a.style.display = 'table-cell'; a.textContent = r.account;
+      const n = tr.insertCell(); n.className = 'num'; n.textContent = inr2.format(r.amount);
+    });
+  }
+
+  function render() {
+    const C = compute();
+    // controls reflect state
+    $('start').value = S.start; $('end').value = S.end; $('family').checked = S.family;
+    document.querySelectorAll('#presets .chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.a === S.start && b.dataset.b === S.end)));
+    document.querySelectorAll('#accounts .chip').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.acct)));
+    // headline
+    const lede = $('lede'); lede.replaceChildren();
+    const b = (t) => el('b', null, t), txt = (t) => document.createTextNode(t);
+    if (!C.spending.length) lede.append(txt('No spending between the dates you picked. Try a wider range.'));
+    else {
+      const top = C.byCat[0];
+      lede.append(txt(`From ${dFmt(parse(S.start))} to ${d3.utcFormat('%-d %b %Y')(parse(S.end))}, you spent `), b(rs(C.total)), txt(' across '), b(String(C.spending.length)),
+        txt(' payments. '), b(top.category), txt(` was the biggest slice, at ${Math.round(top.share)}% of the total, and the single biggest payment was `),
+        b(rs(C.biggest.amount)), txt(' to '), b(C.biggest.payee), txt('.'));
+    }
+    $('k-spent').textContent = rs(C.total); $('k-payments').textContent = `${C.spending.length} payments`;
+    $('k-perday').textContent = rs(C.days > 0 ? C.total / C.days : 0); $('k-days').textContent = `over ${C.days} days`;
+    $('k-top').textContent = C.byCat[0] ? C.byCat[0].category : '—'; $('k-topamt').textContent = C.byCat[0] ? rs(C.byCat[0].amount) : '';
+    $('k-largest').textContent = C.biggest ? rs(C.biggest.amount) : '—'; $('k-largest-to').textContent = C.biggest ? 'to ' + C.biggest.payee : '';
+    $('k-family').textContent = rs(C.family); $('k-family-note').textContent = S.family ? 'Counted in spending' : 'Not counted as spending';
+    $('k-in').textContent = rs(C.moneyIn);
+    drawMonthly(C); drawCategories(C); drawWeekly(C); drawDaily(C); drawTable(C);
+  }
+
+  let timer; window.addEventListener('resize', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+  render();
+})();
+</script>
+</body>
+</html>
